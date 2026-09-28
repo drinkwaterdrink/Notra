@@ -16,6 +16,6 @@ Implementation proceeds one packet at a time. Do not attempt to build the full p
 
 ## Android build
 
-Install JDK 17 and Android SDK platform 36 with build tools 35.0.0. Set `JAVA_HOME` and `ANDROID_HOME`, then run `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` (or `gradlew.bat` on Windows). The debug APK is under `app/build/outputs/apk/debug/`.
+Install JDK 17 and Android SDK platform 37.0 with build tools 36.0.0. Set `JAVA_HOME` and `ANDROID_HOME`, then run `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` (or `gradlew.bat` on Windows). The Gradle wrapper downloads Gradle 9.6.0. The debug APK is under `app/build/outputs/apk/debug/`.
 
 I-001 supplies a four-destination shell and local persistence foundations. Screen interactions for notes and the spatial Board arrive in later packets.
