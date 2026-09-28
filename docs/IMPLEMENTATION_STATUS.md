@@ -2,11 +2,12 @@
 
 **Blueprint version:** 0.1  
 **Current phase:** Application foundation complete
-**Current packet:** I-001 complete; I-002 is next
+**Current packet:** I-001 complete; I-001A is next
 
 | Packet | Status | Purpose | Verification |
 |---|---|---|---|
 | I-001 | COMPLETE | Application Foundation | Debug APK, unit test, lint, four emulator tests, force-stop persistence probe |
+| I-001A | NOT STARTED | Stable Toolchain Modernization | Pre-I-002 prerequisite discovered during blueprint audit |
 | I-002 | NOT STARTED | Notes Editor & Autosave | — |
 | I-003 | NOT STARTED | Library Organization | — |
 | I-004 | NOT STARTED | Spatial Board Engine | — |
