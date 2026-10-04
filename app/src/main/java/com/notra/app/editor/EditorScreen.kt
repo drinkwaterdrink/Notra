@@ -3,6 +3,16 @@ package com.notra.app.editor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.AlertDialog
@@ -47,6 +56,12 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -61,6 +76,8 @@ import com.notra.app.data.RecoveryJournal
 import com.notra.app.document.BlockType
 import com.notra.app.document.MarkType
 import com.notra.app.ui.NotraColors
+import com.notra.app.ui.TopChrome
+import com.notra.app.ui.BottomChrome
 import kotlinx.coroutines.launch
 
 @Composable
@@ -103,7 +120,7 @@ fun EditorScreen(noteId: String, notes: NoteStore, journal: RecoveryJournal, onL
 
 @Composable
 private fun CenterMessage(message: String, onLeave: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(NotraColors.Background).padding(24.dp), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().background(NotraColors.Background).safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text(message, color = NotraColors.Text)
         TextButton(onClick = onLeave) { Text("Back") }
     }
@@ -113,11 +130,13 @@ private fun CenterMessage(message: String, onLeave: () -> Unit) {
 private fun ReadyEditor(model: EditorViewModel, onLeave: () -> Unit) {
     var moreOpen by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
-    Scaffold(containerColor = NotraColors.Background,
+    // IME consumes the keyboard region once for the whole editor. Custom bars own
+    // their system/cutout edges; content consumes Scaffold's padding below.
+    Scaffold(modifier = Modifier.imePadding(), containerColor = NotraColors.Background, contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            Column {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { model.leave(onLeave) }, modifier = Modifier.testTag("editor_back")) { Text("‹ Back") }
+            TopChrome {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp).testTag("editor_top"), verticalAlignment = Alignment.CenterVertically) {
+                    DockButton("Back", "‹", "editor_back", onClick = { model.leave(onLeave) })
                     Spacer(Modifier.weight(1f))
                     val stateText = when (model.saveStatus) {
                         SaveStatus.SAVED -> ""
@@ -126,10 +145,10 @@ private fun ReadyEditor(model: EditorViewModel, onLeave: () -> Unit) {
                         SaveStatus.ERROR -> "Save error"
                     }
                     if (stateText.isNotEmpty()) Text(stateText, color = if (model.saveStatus == SaveStatus.ERROR) MaterialTheme.colorScheme.error else NotraColors.Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.testTag("save_status"))
-                    TextButton(onClick = model::undo, enabled = model.canUndo, modifier = Modifier.testTag("undo")) { Text("Undo") }
-                    TextButton(onClick = model::redo, enabled = model.canRedo, modifier = Modifier.testTag("redo")) { Text("Redo") }
+                    DockButton("Undo", "↶", "undo", enabled = model.canUndo, onClick = model::undo)
+                    DockButton("Redo", "↷", "redo", enabled = model.canRedo, onClick = model::redo)
                     Box {
-                        TextButton(onClick = { moreOpen = true }) { Text("More") }
+                        TextButton(onClick = { moreOpen = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("More") }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                             DropdownMenuItem(text = { Text("Delete note") }, onClick = { moreOpen = false; deleteConfirm = true })
                         }
@@ -139,11 +158,11 @@ private fun ReadyEditor(model: EditorViewModel, onLeave: () -> Unit) {
                 model.saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 20.dp).clickable { model.flushOnStop() }) }
             }
         },
-        bottomBar = { FormattingToolbar(model) }
+        bottomBar = { Box(Modifier.background(NotraColors.Surface)) { BottomChrome { FormattingToolbar(model) } } }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 22.dp).testTag("editor_body")) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal = 22.dp).testTag("editor_body")) {
             item {
-                BasicTextField(state = model.title, modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 18.dp).onFocusChanged { if (it.isFocused) model.focusedBlockId = null }.testTag("title_field"),
+                BasicTextField(state = model.title, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 14.dp).onFocusChanged { if (it.isFocused) model.focusedBlockId = null }.testTag("title_field"),
                     lineLimits = TextFieldLineLimits.SingleLine,
                     textStyle = TextStyle(color = NotraColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold),
                     cursorBrush = SolidColor(NotraColors.Accent),
@@ -152,7 +171,7 @@ private fun ReadyEditor(model: EditorViewModel, onLeave: () -> Unit) {
             itemsIndexed(model.blocks, key = { _, block -> block.id }) { index, block ->
                 BlockField(block, index, model)
             }
-            item { Spacer(Modifier.height(90.dp)) }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
     if (deleteConfirm) AlertDialog(onDismissRequest = { deleteConfirm = false }, title = { Text("Delete note?") },
@@ -184,8 +203,12 @@ private fun BlockField(block: EditorBlock, index: Int, model: EditorViewModel) {
             BlockType.QUOTE -> "│"
             else -> null
         }
-        if (marker != null) {
-            Text(marker, modifier = Modifier.width(28.dp).then(if (block.type == BlockType.CHECKLIST_ITEM) Modifier.clickable { model.toggleChecked(block.id) }.testTag("check_$index") else Modifier), color = NotraColors.Accent)
+        if (block.type == BlockType.CHECKLIST_ITEM) {
+            Box(Modifier.width(48.dp).heightIn(min = 48.dp).toggleable(block.checked, role = Role.Checkbox,
+                onValueChange = { model.toggleChecked(block.id) }).semantics { contentDescription = "Checklist item" }.testTag("check_$index"),
+                contentAlignment = Alignment.TopStart) { Text(marker.orEmpty(), color = NotraColors.Accent) }
+        } else if (marker != null) {
+            Text(marker, modifier = Modifier.width(28.dp), color = NotraColors.Accent)
         }
         val style = when (block.type) {
             BlockType.HEADING_1 -> TextStyle(fontSize = 23.sp, fontWeight = FontWeight.SemiBold, color = NotraColors.Text)
@@ -208,32 +231,55 @@ private fun BlockField(block: EditorBlock, index: Int, model: EditorViewModel) {
 }
 
 @Composable
+private fun DockButton(description: String, label: String, tag: String, enabled: Boolean = true,
+    onClick: () -> Unit, selected: Boolean? = null, style: TextStyle = MaterialTheme.typography.titleMedium) {
+    TextButton(onClick = onClick, enabled = enabled, contentPadding = PaddingValues(0.dp),
+        modifier = Modifier.width(48.dp).heightIn(min = 48.dp).testTag(tag).semantics {
+            contentDescription = description
+            if (selected != null) stateDescription = if (selected) "Applied" else "Not applied"
+        }) {
+        Text(label, style = style, color = if (!enabled) NotraColors.Muted.copy(alpha = .45f)
+            else if (selected == true) NotraColors.Accent else NotraColors.Text)
+    }
+}
+
+@Composable
 private fun FormattingToolbar(model: EditorViewModel) {
     var styleOpen by remember { mutableStateOf(false) }
+    var insertOpen by remember { mutableStateOf(false) }
     val focused = model.focusedBlockId
-    Column(Modifier.fillMaxWidth().background(NotraColors.Surface).padding(horizontal = 8.dp, vertical = 2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                TextButton(onClick = { styleOpen = true }, modifier = Modifier.testTag("block_style")) { Text("Style ▾") }
-                DropdownMenu(expanded = styleOpen, onDismissRequest = { styleOpen = false }) {
-                    BlockType.entries.filter { it != BlockType.DIVIDER }.forEach { type ->
-                        DropdownMenuItem(text = { Text(type.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { focused?.let { model.setBlockType(it, type) }; styleOpen = false })
-                    }
-                    DropdownMenuItem(text = { Text("Remove block") }, onClick = { focused?.let(model::removeBlock); styleOpen = false })
-                }
-            }
-            listOf(MarkType.BOLD to "B", MarkType.ITALIC to "I", MarkType.UNDERLINE to "U", MarkType.STRIKETHROUGH to "S", MarkType.HIGHLIGHT to "H").forEach { (type, label) ->
-                TextButton(onClick = { model.toggleMark(type) }, enabled = focused != null, modifier = Modifier.testTag("mark_${type.name}")) {
-                    Text(label, color = if (model.isMarkSelected(type)) NotraColors.Accent else NotraColors.Text)
-                }
-            }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp).testTag("editor_dock"),
+        verticalAlignment = Alignment.CenterVertically) {
+        listOf(MarkType.BOLD to "B", MarkType.ITALIC to "I", MarkType.UNDERLINE to "U", MarkType.STRIKETHROUGH to "S", MarkType.HIGHLIGHT to "H").forEach { (type, label) ->
+            val textStyle = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = if (type == MarkType.BOLD) FontWeight.Bold else FontWeight.Medium,
+                fontStyle = if (type == MarkType.ITALIC) FontStyle.Italic else FontStyle.Normal,
+                textDecoration = when (type) { MarkType.UNDERLINE -> TextDecoration.Underline; MarkType.STRIKETHROUGH -> TextDecoration.LineThrough; else -> null })
+            DockButton(type.name.lowercase().replaceFirstChar { it.uppercase() }, label, "mark_${type.name}", focused != null,
+                onClick = { model.toggleMark(type) }, selected = model.isMarkSelected(type), style = textStyle)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { model.insertAfter(focused) }, modifier = Modifier.testTag("insert_block")) { Text("+ Block") }
-            TextButton(onClick = { model.insertAfter(focused, BlockType.BULLET_ITEM) }) { Text("• List") }
-            TextButton(onClick = { model.insertAfter(focused, BlockType.NUMBERED_ITEM) }) { Text("1. List") }
-            TextButton(onClick = { model.insertAfter(focused, BlockType.CHECKLIST_ITEM) }, modifier = Modifier.testTag("insert_checklist")) { Text("☐ Check") }
-            TextButton(onClick = { model.insertAfter(focused, BlockType.DIVIDER) }) { Text("—") }
+        Box {
+            DockButton("Block and insertion actions", "+", "insert_menu", onClick = { insertOpen = true })
+            DropdownMenu(expanded = insertOpen, onDismissRequest = { insertOpen = false }) {
+                DropdownMenuItem(text = { Text("Block style…") }, modifier = Modifier.testTag("block_style"),
+                    onClick = { insertOpen = false; styleOpen = true })
+                DropdownMenuItem(text = { Text("Next block") }, modifier = Modifier.testTag("insert_block"),
+                    onClick = { insertOpen = false; model.insertAfter(focused) })
+                listOf(BlockType.BULLET_ITEM to "Bullet list", BlockType.NUMBERED_ITEM to "Numbered list",
+                    BlockType.CHECKLIST_ITEM to "Checklist", BlockType.DIVIDER to "Divider").forEach { (type, label) ->
+                    DropdownMenuItem(text = { Text(label) }, modifier = Modifier.testTag(if (type == BlockType.CHECKLIST_ITEM) "insert_checklist" else "insert_${type.name}"),
+                        onClick = { insertOpen = false; model.insertAfter(focused, type) })
+                }
+            }
+            DropdownMenu(expanded = styleOpen, onDismissRequest = { styleOpen = false }) {
+                BlockType.entries.filter { it != BlockType.DIVIDER }.forEach { type ->
+                    DropdownMenuItem(text = { Text(type.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }) },
+                        enabled = focused != null,
+                        onClick = { focused?.let { model.setBlockType(it, type) }; styleOpen = false })
+                }
+                DropdownMenuItem(text = { Text("Remove block") }, enabled = focused != null,
+                    onClick = { focused?.let(model::removeBlock); styleOpen = false })
+            }
         }
     }
 }
