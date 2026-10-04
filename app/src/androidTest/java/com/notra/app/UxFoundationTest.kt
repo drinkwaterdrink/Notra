@@ -109,6 +109,10 @@ class UxFoundationTest {
         compose.onNodeWithTag("editor_back").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("destination_Library")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("destination_Library").performClick()
+        // Root now contains physical folders. Verify compact note density in the
+        // folder-free Unfiled view while keeping the original 80dp assertion.
+        compose.onNodeWithTag("library_location").performClick()
+        compose.onNodeWithText("Unfiled").performClick()
         val header = compose.onNodeWithTag("screen_title").fetchSemanticsNode().boundsInWindow
         val note = compose.onNodeWithText("Compact library probe").assertIsDisplayed().fetchSemanticsNode().boundsInWindow
         val density = compose.activity.resources.displayMetrics.density

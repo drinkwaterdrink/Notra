@@ -3,10 +3,8 @@ package com.notra.app.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,15 +28,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.notra.app.Destination
 import com.notra.app.ShellViewModel
-import com.notra.app.data.NoteEntity
-import com.notra.app.document.DocumentCodec
-import com.notra.app.document.DocumentRead
+import com.notra.app.library.LibraryScreen
+import com.notra.app.library.LibraryViewModel
 
 @Composable
-fun NotraShell(model: ShellViewModel, onNew: () -> Unit, onOpen: (String) -> Unit) {
+fun NotraShell(model: ShellViewModel, library: LibraryViewModel, onNew: () -> Unit, onOpen: (String) -> Unit) {
     val destination by model.destination.collectAsState()
     val reducedMotion by model.reducedMotion.collectAsState()
-    val active by model.activeNotes.collectAsState()
     Box(Modifier.fillMaxSize().background(NotraColors.Background)) {
         if (destination == Destination.BOARD) BoardSubstrate()
         Scaffold(containerColor = Color.Transparent, contentColor = NotraColors.Text, contentWindowInsets = WindowInsets.safeDrawing,
@@ -63,13 +59,7 @@ fun NotraShell(model: ShellViewModel, onNew: () -> Unit, onOpen: (String) -> Uni
                         Text("Capture a note. Make room for ideas.", style = MaterialTheme.typography.bodySmall, color = NotraColors.Muted)
                     }
                 }
-                Destination.LIBRARY -> LazyColumn(content.testTag("library_notes"), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    item { Text("${active.size} ${if (active.size == 1) "note" else "notes"}", style = MaterialTheme.typography.labelMedium,
-                        color = NotraColors.Muted, modifier = Modifier.padding(vertical = 8.dp)) }
-                    if (active.isEmpty()) item { Text("No notes yet. Capture your first idea.", color = NotraColors.Muted,
-                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 12.dp)) }
-                    items(active, key = { it.id }) { note -> NoteListRow(note, onOpen) }
-                }
+                Destination.LIBRARY -> LibraryScreen(library, content, onOpen)
                 Destination.SEARCH -> Column(content.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text("Search is not available yet", style = MaterialTheme.typography.titleSmall)
                     Text("Open your notes from Library.", color = NotraColors.Muted, style = MaterialTheme.typography.bodySmall,
@@ -160,21 +150,4 @@ private fun DestinationGlyph(destination: Destination, color: Color) {
             }
         }
     }
-}
-
-@Composable
-private fun NoteListRow(note: NoteEntity, onOpen: (String) -> Unit) {
-    val preview = when (val decoded = DocumentCodec.decode(note.documentSchemaVersion, note.documentPayload)) {
-        is DocumentRead.Valid -> DocumentCodec.plainText(decoded.document).take(100)
-        else -> "Document needs attention"
-    }
-    Column(Modifier.fillMaxWidth().testTag("note_${note.id}").clickable { onOpen(note.id) }.padding(vertical = 12.dp)) {
-        Text(note.title.ifEmpty { "Untitled" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (preview.isNotBlank()) Text(preview, color = NotraColors.Muted, style = MaterialTheme.typography.bodySmall,
-            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-        Text("Updated ${android.text.format.DateFormat.format("MMM d · h:mm a", note.updatedAt)}", color = NotraColors.Muted,
-            style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp))
-    }
-    HorizontalDivider(color = NotraColors.Border.copy(alpha = .4f))
 }

@@ -22,6 +22,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.notra.app.data.NoteStore
 import com.notra.app.data.PreferencesRepository
 import com.notra.app.editor.EditorScreen
+import com.notra.app.library.LibraryViewModel
 import com.notra.app.ui.NotraTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -69,12 +70,19 @@ class MainActivity : ComponentActivity() {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = ShellViewModel(container.preferences, container.notes) as T
             })
+            val library: LibraryViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = LibraryViewModel(container.library, container.preferences) as T
+            })
             NotraTheme {
                 NavDisplay(backStack = backStack, onBack = {}, entryDecorators = listOf(
                     rememberSaveableStateHolderNavEntryDecorator(),
                     rememberViewModelStoreNavEntryDecorator()
                 ), entryProvider = entryProvider {
-                    entry<ShellRoute> { NotraShell(shell, onNew = { shell.newNote { backStack.add(EditorRoute(it)) } }, onOpen = { backStack.add(EditorRoute(it)) }) }
+                    entry<ShellRoute> { NotraShell(shell, library, onNew = {
+                        if (shell.destination.value == Destination.LIBRARY) library.newNote { backStack.add(EditorRoute(it)) }
+                        else shell.newNote { backStack.add(EditorRoute(it)) }
+                    }, onOpen = { backStack.add(EditorRoute(it)) }) }
                     entry<EditorRoute> { route -> EditorScreen(route.noteId, container.notes, container.drafts, onLeave = { backStack.removeLastOrNull() }) }
                 })
             }
