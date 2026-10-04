@@ -1,14 +1,15 @@
 # Notra — Implementation Status
 
 **Blueprint version:** 0.1  
-**Current phase:** Notes editor and autosave implemented
-**Current packet:** I-002 complete; I-003 is next
+**Current phase:** Editor reliability repairs verified; awaiting independent review
+**Current packet:** I-002R complete; I-003 remains not started
 
 | Packet | Status | Purpose | Verification |
 |---|---|---|---|
 | I-001 | COMPLETE | Application Foundation | Debug APK, unit test, lint, four emulator tests, force-stop persistence probe |
 | I-001A | COMPLETE | Stable Toolchain Modernization | Debug APK, JVM test, lint, Android test APK, four emulator tests, schema hash |
 | I-002 | COMPLETE | Notes Editor & Autosave | Debug APK, 11 JVM tests, lint, Android test APK, 16 emulator tests, force-stop probe, Room schema hash |
+| I-002R | COMPLETE | Editor Reliability Repairs | Debug APK, 11 JVM tests, lint, Android test APK, 21 emulator tests including five new regressions, unchanged Room/document contracts |
 | I-003 | NOT STARTED | Library Organization | — |
 | I-004 | NOT STARTED | Spatial Board Engine | — |
 | I-005 | NOT STARTED | Adaptive Cards, Resize & Stacks | — |
@@ -66,6 +67,21 @@
 - **Known issues:** Text edits before an inline-style toolbar action fall outside the subsequent Undo history: formatting starts a new Compose text-undo segment, while a small separate style history supports sequential mark undo/redo. Structural undo is separate from focused text undo. Paragraph splitting with soft-keyboard Enter and soft-keyboard Backspace merge are deferred to I-010; explicit block insertion and hardware Backspace on empty blocks work. Connected tests used an API 36 emulator, not a physical device. Recovery writes are asynchronous, leaving a brief window before the IO worker records the newest keystroke.
 - **Blueprint deviations:** None. Room schema version 1 was preserved.
 - **Notes for next packet:** I-003 can build Library organization on the active-note repository and V1 plain-text derivation. Keep document DTOs independent from Compose; improve the noted IME/undo details in I-010 without altering V1 persistence semantics.
+
+### I-002R — Editor Reliability Repairs
+- **Status:** COMPLETE; awaiting independent review before merge.
+- **Date:** 2026-10-03 (America/New_York)
+- **Commit/PR:** Uncommitted repairs on `review/i-002`, based on `76fdd97`. No commit, push, or merge performed; `main` unchanged.
+- **Root causes:** Queued drafts checked generation but not durable revision; discard only navigated away; block removals left snapshot collectors alive and restoration added more; type-conversion undo omitted checklist checked state.
+- **Summary/files:** `editor/EditorViewModel.kt` now checks session activity, deletion state, generation, and base revision under the save mutex before queued journal writes. Discard synchronously deactivates the session, cancels/joins autosave, clears the journal under the same mutex, then leaves. Cancellation propagates instead of masquerading as a save error. Block observers have one tracked Job per block ID, cancelled on removal/replacement. Type undo/redo restores type and checked state. `data/RecoveryJournal.kt` reports failed draft deletion instead of claiming a successful clear. No UI redesign, dependency change, Room change, or V1 document-contract change.
+- **Regression tests:** `EditorReliabilityTest.kt` gates save A, queues B against the old revision, succeeds A, fails B, waits for the stale queue worker, checks the on-disk revision/content, and reopens B. It also checks discard against an in-flight save/queued drafts/lifecycle work, repeated remove/restore with no orphan observers and exactly one dirty transition per edit, and checklist type undo/redo. `EditorErrorTest.kt` exercises the real failure dialog's discard action and a fresh ViewModel owner on reopen. Internal generation/queue-completion diagnostics are test seams only.
+- **Tests/checks actually run:** Targeted `:app:connectedDebugAndroidTest` runs against the original behavior; then `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest --no-daemon` using the cached Gradle 9.6.0 distribution and JDK 17; `git diff --check`; exported Room v1 SHA-256 and Git diff checks for Room/document/authoritative files; branch and `main` ref checks.
+- **Results:** The four required new regressions first failed on the original behavior (stale recovery revision, retained abandoned draft, orphan/duplicate observers, lost checklist state). After repairs, all 11 JVM tests and all 21 connected tests passed on the API 36 emulator, including five new tests and all 16 existing tests. Debug app and Android test APK built. Lint: 0 errors, 4 existing warnings (targetSdk 36, newer Gradle available, newer serialization runtime available, backup-rule compatibility). Compose test-rule deprecation warnings remain. An initial connected attempt could not install while the emulator was booting and ran no tests; all reported test outcomes come from subsequent completed runs.
+- **Acceptance criteria:** PASS for R-001 revision invariant and fresh recovery; R-002 true discard and inactive-session persistence guard; R-003 one observer per active block/no orphan dirty transitions; checklist checked-state undo/redo; existing regressions; required builds/lint; unchanged persistence contracts; `git diff --check`.
+- **Schema/document status:** Room remains version 1; exported schema SHA-256 remains `E71F2FD94B0D277CC503A1656D405A91C75EA62E7986D5A87BB11491C8D3FE69`. `docs/EDITOR_DOCUMENT_FORMAT.md` and document DTO/codec are unchanged. Blueprint, decision ledger, and design reference are unchanged.
+- **Known issues:** Existing I-002 limitations remain: segmented inline-style/text undo, separate structural undo, deferred soft-keyboard Enter splitting/Backspace merging, a brief asynchronous recovery-write window, and no physical-device verification. The connected suite includes the retained persistence probes; a separate force-stop/relaunch sequence was not rerun for this repair packet.
+- **Blueprint deviations:** None. No I-003 or later features added.
+- **Readiness:** Repairs are ready for independent review before merging `review/i-002`; I-003 remains not started.
 
 When completing a packet, record:
 

@@ -50,5 +50,8 @@ class RecoveryJournal(private val directory: File) {
         }
     }
 
-    suspend fun clear(id: String) = withContext(Dispatchers.IO) { file(id).delete(); Unit }
+    suspend fun clear(id: String) = withContext(Dispatchers.IO) {
+        val target = file(id)
+        check(!target.exists() || target.delete()) { "Recovery draft could not be cleared" }
+    }
 }

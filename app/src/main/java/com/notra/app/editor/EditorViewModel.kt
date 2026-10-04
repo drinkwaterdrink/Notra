@@ -19,6 +19,8 @@ import com.notra.app.document.DocumentRead
 import com.notra.app.document.MarkType
 import com.notra.app.document.NoteDocumentV1
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -68,12 +70,17 @@ class EditorViewModel(
 
     private var revision = 0L
     private var generation = 0L
+    // Internal diagnostics for deterministic session regression tests; not editor UI/API.
+    internal val dirtyGeneration: Long get() = generation
+    internal var onQueuedDraftProcessed: ((RecoveryDraft) -> Unit)? = null
     private var durableTitle = ""
     private var durablePayload = ""
     @Volatile private var durableGeneration = 0L
     private val writeMutex = Mutex()
     private val journalQueue = Channel<RecoveryDraft>(Channel.CONFLATED)
     private var autosaveJob: Job? = null
+    private var sessionActive = true
+    private val blockObservers = mutableMapOf<String, Job>()
     private val undo = ArrayDeque<StructuralAction>()
     private val redo = ArrayDeque<StructuralAction>()
 
@@ -82,8 +89,13 @@ class EditorViewModel(
             for (draft in journalQueue) {
                 try {
                     writeMutex.withLock {
-                        if (draft.generation > durableGeneration) journal.write(draft)
+                        // A queued snapshot's base revision can become obsolete while a save
+                        // holds this mutex. It must not replace the newer draft from flush().
+                        if (sessionActive && !deleting && draft.generation > durableGeneration && draft.durableRevision == revision) journal.write(draft)
                     }
+                    onQueuedDraftProcessed?.invoke(draft)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     saveStatus = SaveStatus.ERROR
                     saveError = "Recovery draft could not be written"
@@ -132,13 +144,20 @@ class EditorViewModel(
     }
 
     private fun addRuntimeBlock(block: EditorBlock, index: Int = blocks.size) {
+        blockObservers.remove(block.id)?.cancel()
         blocks.add(index, block)
-        viewModelScope.launch {
-            var previous = block.snapshot()
+        val startingSnapshot = block.snapshot()
+        blockObservers[block.id] = viewModelScope.launch {
+            var previous = startingSnapshot
             snapshotFlow { block.snapshot() }.collect { current ->
                 if (current != previous) { previous = current; markDirty() }
             }
         }
+    }
+
+    private fun removeRuntimeBlock(block: EditorBlock) {
+        blockObservers.remove(block.id)?.cancel()
+        blocks.remove(block)
     }
 
     fun snapshot(): NoteDocumentV1 = DocumentCodec.canonical(NoteDocumentV1(blocks = blocks.map(EditorBlock::snapshot)))
@@ -146,7 +165,7 @@ class EditorViewModel(
     private fun draft(): RecoveryDraft = RecoveryDraft(noteId, revision, generation, title.text.toString(), DocumentCodec.encode(snapshot()))
 
     private fun markDirty() {
-        if (load != EditorLoad.Ready || deleting) return
+        if (load != EditorLoad.Ready || deleting || !sessionActive) return
         generation++
         saveStatus = SaveStatus.PENDING
         saveError = null
@@ -155,13 +174,15 @@ class EditorViewModel(
     }
 
     private fun scheduleSave() {
+        if (!sessionActive) return
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch { delay(AUTOSAVE_IDLE_MS); flush() }
     }
 
     suspend fun flush(): Boolean = writeMutex.withLock {
-        if (load != EditorLoad.Ready || deleting) return@withLock false
+        if (load != EditorLoad.Ready || deleting || !sessionActive) return@withLock false
         while (true) {
+            if (!sessionActive) return@withLock false
             val actualTitle = title.text.toString()
             val actualPayload = DocumentCodec.encode(snapshot())
             if (generation == durableGeneration && (actualTitle != durableTitle || actualPayload != durablePayload)) {
@@ -186,6 +207,8 @@ class EditorViewModel(
                         recovered = false
                     } else saveStatus = SaveStatus.PENDING
                 } else saveStatus = SaveStatus.PENDING
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 saveStatus = SaveStatus.ERROR
                 saveError = "Could not save this note. Your recovery draft is kept when available."
@@ -204,7 +227,27 @@ class EditorViewModel(
     }
     fun retryExit(onSuccess: () -> Unit) { exitFailure = false; leave(onSuccess) }
     fun keepEditing() { exitFailure = false }
-    fun leaveWithoutLatest(onSuccess: () -> Unit) { exitFailure = false; onSuccess() }
+    fun leaveWithoutLatest(onSuccess: () -> Unit) {
+        if (!sessionActive) return
+        // Deactivate synchronously so edits, queued drafts and lifecycle flushes cannot
+        // restart persistence while discard waits for an already running writer.
+        sessionActive = false
+        viewModelScope.launch {
+            autosaveJob?.cancelAndJoin()
+            try {
+                writeMutex.withLock { journal.clear(noteId) }
+                exitFailure = false
+                onSuccess()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                sessionActive = true
+                saveStatus = SaveStatus.ERROR
+                saveError = "Could not discard the recovery draft. Please retry or keep editing."
+                exitFailure = true
+            }
+        }
+    }
 
     suspend fun checkAvailability() {
         if (load != EditorLoad.Ready) return
@@ -238,9 +281,14 @@ class EditorViewModel(
         val block = blocks.firstOrNull { it.id == id } ?: return
         if (block.type == type) return
         val old = block.type
+        val oldChecked = block.checked
+        val newChecked = if (type == BlockType.CHECKLIST_ITEM) oldChecked else false
         block.type = type
-        if (type != BlockType.CHECKLIST_ITEM) block.checked = false
-        undo.addLast(StructuralAction({ block.type = old; markDirty() }, { block.type = type; markDirty() }))
+        block.checked = newChecked
+        undo.addLast(StructuralAction(
+            { block.type = old; block.checked = oldChecked; markDirty() },
+            { block.type = type; block.checked = newChecked; markDirty() }
+        ))
         redo.clear(); markDirty()
     }
     fun toggleChecked(id: String) {
@@ -264,23 +312,25 @@ class EditorViewModel(
         val block = EditorBlock(DocumentBlock(UUID.randomUUID().toString(), nextType))
         addRuntimeBlock(block, index)
         focusedBlockId = if (nextType == BlockType.DIVIDER) prior?.id else block.id
-        undo.addLast(StructuralAction({ blocks.remove(block); markDirty() }, { addRuntimeBlock(block, index.coerceAtMost(blocks.size)); markDirty() }))
+        undo.addLast(StructuralAction({ removeRuntimeBlock(block); markDirty() }, { addRuntimeBlock(block, index.coerceAtMost(blocks.size)); markDirty() }))
         redo.clear(); markDirty()
     }
     fun removeEmpty(id: String) {
         val index = blocks.indexOfFirst { it.id == id }
         if (index <= 0 || blocks[index].text.text.isNotEmpty()) return
-        val block = blocks.removeAt(index)
+        val block = blocks[index]
+        removeRuntimeBlock(block)
         focusedBlockId = blocks[index - 1].id
-        undo.addLast(StructuralAction({ addRuntimeBlock(block, index); markDirty() }, { blocks.remove(block); markDirty() }))
+        undo.addLast(StructuralAction({ addRuntimeBlock(block, index); markDirty() }, { removeRuntimeBlock(block); markDirty() }))
         redo.clear(); markDirty()
     }
     fun removeBlock(id: String) {
         val index = blocks.indexOfFirst { it.id == id }
         if (index < 0 || blocks.size == 1) return
-        val block = blocks.removeAt(index)
+        val block = blocks[index]
+        removeRuntimeBlock(block)
         focusedBlockId = blocks.getOrNull((index - 1).coerceAtLeast(0))?.id
-        undo.addLast(StructuralAction({ addRuntimeBlock(block, index.coerceAtMost(blocks.size)); markDirty() }, { blocks.remove(block); markDirty() }))
+        undo.addLast(StructuralAction({ addRuntimeBlock(block, index.coerceAtMost(blocks.size)); markDirty() }, { removeRuntimeBlock(block); markDirty() }))
         redo.clear(); markDirty()
     }
     fun toggleMark(type: MarkType) {

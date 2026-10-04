@@ -1,6 +1,7 @@
 package com.notra.app
 
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -30,6 +31,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 
 @RunWith(AndroidJUnit4::class)
 class EditorErrorTest {
@@ -88,6 +99,35 @@ class EditorErrorTest {
         compose.onNodeWithTag("title_field").assertTextContains("Recovered title")
         compose.onNodeWithText("Recovered unsaved changes").assertExists()
         assertEquals("Durable", store.row.title)
+    }
+
+    @Test fun leaveWithoutLatestDiscardsDraftBeforeReopen() {
+        val (store, journal) = fixture()
+        store.fail = true
+        var visible by mutableStateOf(true)
+        var session by mutableStateOf(0)
+        compose.setContent {
+            if (visible) key(session) {
+                val owner = remember { object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() } }
+                DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
+                CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+                    NotraTheme { EditorScreen(store.row.id, store, journal, onLeave = { visible = false }) }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("title_field")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("title_field").performTextInput(" abandoned")
+        compose.onNodeWithTag("editor_back").performClick()
+        compose.onNodeWithText("Note not saved").assertExists()
+        compose.onNodeWithText("Leave without latest changes").performClick()
+        compose.waitUntil(10_000) { !visible }
+        runBlocking { assertNull(journal.read(store.row.id)) }
+        assertEquals("Durable", store.row.title)
+        // A fresh owner is required: a key alone does not replace an Activity's ViewModel.
+        compose.runOnIdle { session++; visible = true }
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("title_field")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("title_field").assertTextEquals("Durable")
+        runBlocking { assertNull(journal.read(store.row.id)) }
     }
 
     @Test fun futurePayloadCannotBeOverwritten() {
