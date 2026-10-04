@@ -28,6 +28,10 @@ interface NoteDao {
     @Insert suspend fun insert(note: NoteEntity)
     @Query("SELECT * FROM notes WHERE id = :id") suspend fun get(id: String): NoteEntity?
     @Query("SELECT * FROM notes WHERE deletedAt IS NULL ORDER BY updatedAt DESC") fun observeActive(): Flow<List<NoteEntity>>
+    @Query("UPDATE notes SET title = :title, documentPayload = :payload, documentSchemaVersion = 1, updatedAt = :updatedAt, revision = revision + 1 WHERE id = :id AND revision = :expectedRevision AND deletedAt IS NULL")
+    suspend fun save(id: String, expectedRevision: Long, title: String, payload: String, updatedAt: Long): Int
+    @Query("UPDATE notes SET deletedAt = :deletedAt, updatedAt = :deletedAt, revision = revision + 1 WHERE id = :id AND revision = :expectedRevision AND deletedAt IS NULL")
+    suspend fun softDelete(id: String, expectedRevision: Long, deletedAt: Long): Int
 }
 
 @Database(entities = [NoteEntity::class], version = 1, exportSchema = true)

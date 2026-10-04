@@ -1,14 +1,14 @@
 # Notra — Implementation Status
 
 **Blueprint version:** 0.1  
-**Current phase:** Application foundation and toolchain modernization complete
-**Current packet:** I-001A complete; I-002 is next
+**Current phase:** Notes editor and autosave implemented
+**Current packet:** I-002 complete; I-003 is next
 
 | Packet | Status | Purpose | Verification |
 |---|---|---|---|
 | I-001 | COMPLETE | Application Foundation | Debug APK, unit test, lint, four emulator tests, force-stop persistence probe |
 | I-001A | COMPLETE | Stable Toolchain Modernization | Debug APK, JVM test, lint, Android test APK, four emulator tests, schema hash |
-| I-002 | NOT STARTED | Notes Editor & Autosave | — |
+| I-002 | COMPLETE | Notes Editor & Autosave | Debug APK, 11 JVM tests, lint, Android test APK, 16 emulator tests, force-stop probe, Room schema hash |
 | I-003 | NOT STARTED | Library Organization | — |
 | I-004 | NOT STARTED | Spatial Board Engine | — |
 | I-005 | NOT STARTED | Adaptive Cards, Resize & Stacks | — |
@@ -51,6 +51,21 @@
 - **Known issues:** Connected tests ran on an API 36 emulator; no API 37 emulator or physical device was tested. Existing lint warnings remain as described above.
 - **Blueprint deviations:** None. No application behavior or data semantics changed.
 - **Notes for next packet:** I-002 can use Compose 1.12.1's stable text APIs. Keep targetSdk 36 until a separate behavior migration, and preserve Room schema v1 with an explicit migration if I-002 changes persistence fields.
+
+### I-002 — Notes Editor & Autosave
+- **Status:** COMPLETE
+- **Date:** 2026-09-28 (America/New_York)
+- **Commit/PR:** Uncommitted working tree, as requested. No PR.
+- **Summary:** Added portable V1 block documents; create, open, edit, autosave, recover, and soft-delete flows; a focused rich-text/block editor; a minimal active-note list; and Shell → Editor navigation. The existing four shell destinations remain.
+- **Files/architecture:** `document/NoteDocument.kt` owns V1 DTOs, validation, canonical ranges, JSON encoding/decoding, legacy/future handling, and plain-text derivation. `editor/RichTextMapper.kt` maps persisted UTF-16 marks to Compose tracked styles and owns local inline-style undo. `editor/EditorViewModel.kt` owns session state, block operations, autosave, recovery coordination, and safe exit. `editor/EditorScreen.kt` renders editor UI. `data/RecoveryJournal.kt` owns app-private draft files. `NoteRepository`/DAO own conditional revision saves and soft delete; `MainActivity.kt` owns minimal note access and Navigation 3 routes.
+- **Serialization/navigation:** `kotlinx.serialization-json:1.9.0` with the Kotlin 2.2.10 serialization plugin; no Compose classes in payloads. Navigation 3 runtime/UI `1.2.0` with the Lifecycle `2.11.0` ViewModel NavEntry decorator; Editor routes carry stable note UUIDs.
+- **Autosave/recovery policy:** 650 ms idle debounce; serialized revision-checked saves; live-snapshot comparison on flush; Back and lifecycle-stop flush; immediate create/delete. A conflated IO writer stores the latest title/document snapshot under `filesDir/drafts/<noteId>.json` using temp-file atomic replacement. A matching-revision draft is restored on open; obsolete/corrupt drafts cannot replace Room data. Save failures remain visible and Back offers Retry, Keep editing, and Leave without latest changes.
+- **Tests/checks actually run:** `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebugAndroidTest`, `:app:connectedDebugAndroidTest` on an API 36 emulator; separate ADB install → seed note → force-stop → relaunch → verify note probe; `git diff --check`; SHA-256 comparison of the exported Room v1 schema.
+- **Results:** Debug APK and Android test APK built; 11 JVM tests and 16 connected tests passed; lint 0 errors and 4 warnings (intentional targetSdk 36, newer Gradle available, newer serialization runtime available, pre-existing backup-rule warning). The Room v1 schema remained unchanged with SHA-256 `E71F2FD94B0D277CC503A1656D405A91C75EA62E7986D5A87BB11491C8D3FE69`. The separate force-stop/relaunch probe passed. `git diff --check` passed.
+- **Acceptance criteria:** PASS for tested note creation/reopen, title/body and rich-mark persistence, supported V1 blocks, checklist, truthful save-error behavior, Back/background flush, recovery, soft-delete, corrupt/future data protection, shell regressions, Room/DataStore persistence, and unchanged schema. No I-003+ behavior was added.
+- **Known issues:** Text edits before an inline-style toolbar action fall outside the subsequent Undo history: formatting starts a new Compose text-undo segment, while a small separate style history supports sequential mark undo/redo. Structural undo is separate from focused text undo. Paragraph splitting with soft-keyboard Enter and soft-keyboard Backspace merge are deferred to I-010; explicit block insertion and hardware Backspace on empty blocks work. Connected tests used an API 36 emulator, not a physical device. Recovery writes are asynchronous, leaving a brief window before the IO worker records the newest keystroke.
+- **Blueprint deviations:** None. Room schema version 1 was preserved.
+- **Notes for next packet:** I-003 can build Library organization on the active-note repository and V1 plain-text derivation. Keep document DTOs independent from Compose; improve the noted IME/undo details in I-010 without altering V1 persistence semantics.
 
 When completing a packet, record:
 

@@ -8,13 +8,36 @@ import androidx.room.Room
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File
+import com.notra.app.document.DocumentCodec
+import com.notra.app.document.NoteDocumentV1
+import java.util.UUID
 
 private val Context.notraDataStore by preferencesDataStore(name = "notra_preferences")
 
-class NoteRepository(private val dao: NoteDao) {
-    fun observeActive(): Flow<List<NoteEntity>> = dao.observeActive()
-    suspend fun find(id: String): NoteEntity? = dao.get(id)
+interface NoteStore {
+    fun observeActive(): Flow<List<NoteEntity>>
+    suspend fun find(id: String): NoteEntity?
+    suspend fun create(): NoteEntity
+    suspend fun save(id: String, expectedRevision: Long, title: String, payload: String): NoteEntity
+    suspend fun softDelete(id: String, expectedRevision: Long): Boolean
+}
+
+class NoteRepository(private val dao: NoteDao) : NoteStore {
+    override fun observeActive(): Flow<List<NoteEntity>> = dao.observeActive()
+    override suspend fun find(id: String): NoteEntity? = dao.get(id)
     suspend fun add(note: NoteEntity) = dao.insert(note)
+    override suspend fun create(): NoteEntity {
+        val now = System.currentTimeMillis()
+        val note = NoteEntity(id = UUID.randomUUID().toString(), title = "", documentPayload = DocumentCodec.encode(NoteDocumentV1.empty()), documentSchemaVersion = 1, createdAt = now, updatedAt = now)
+        dao.insert(note)
+        return note
+    }
+    override suspend fun save(id: String, expectedRevision: Long, title: String, payload: String): NoteEntity {
+        val changed = dao.save(id, expectedRevision, title, payload, System.currentTimeMillis())
+        if (changed != 1) error("Note was changed or deleted")
+        return requireNotNull(dao.get(id))
+    }
+    override suspend fun softDelete(id: String, expectedRevision: Long): Boolean = dao.softDelete(id, expectedRevision, System.currentTimeMillis()) == 1
 }
 
 class PreferencesRepository(private val context: Context) {
@@ -33,6 +56,7 @@ class AttachmentDirectory(private val context: Context) {
 class AppContainer(context: Context) {
     private val database = Room.databaseBuilder(context, NotraDatabase::class.java, "notra.db").build()
     val notes = NoteRepository(database.notes())
+    val drafts = RecoveryJournal(File(context.filesDir, "drafts"))
     val preferences = PreferencesRepository(context)
     val attachments = AttachmentDirectory(context)
 }
