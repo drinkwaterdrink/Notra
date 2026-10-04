@@ -1,6 +1,6 @@
 # Notra — Decision Ledger
 
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-03
 
 | ID | Status | Decision | Consequence |
 |---|---|---|---|
@@ -29,4 +29,7 @@
 | D-023 | DEFERRED | Android↔PC sync/companion. | Future direction is hybrid/local-first. |
 | D-024 | LOCKED | Motion should feel tactile but professional, not game-like. | Direct 1:1 drag, restrained lift, minimal settling. |
 | D-025 | LOCKED | User-provided movement recording is a mechanics reference, not theme reference. | Preserve placement/zoom smoothness concepts but not its visual style. |
-| D-026 | ASSUMPTION | Exact minSdk is selected during I-001 after toolchain review. | Avoid fake precision before bootstrap. |
+| D-026 | LOCKED | Android minimum SDK is 26 for the current native app baseline. | Preserve API 26 support unless a future requirement justifies an explicit migration. |
+| D-027 | LOCKED | Interactive UI must respect Android safe-drawing, navigation-bar, cutout, and IME insets on every supported navigation mode. | No toolbar, button, card control, or navigation element may sit beneath Samsung 3-button navigation, gesture navigation, the status bar, a cutout, or the software keyboard. Physical-device inset defects are release blockers for the affected packet. |
+| D-028 | LOCKED | The product shell is content-first and compact; avoid generic Material hero-page scaffolding. | Board becomes a full-bleed workspace with compact/floating chrome; Library/Search/Settings use restrained page chrome rather than oversized titles, explanatory panels, and large dead zones. |
+| D-029 | LOCKED | The user-provided **Kinetic Canvas Visual Workspace** is inspiration for spatial density, layered dark surfaces, compact HUDs, canvas/grid contrast, and focused editing—not a feature-scope source. | Do not import Graph view, S-Pen drawing, audio notes, due dates/reminders, sound effects, emoji-heavy controls, permanent node chrome, or other prototype extras unless separately approved in the blueprint. |
