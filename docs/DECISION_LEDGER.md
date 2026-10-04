@@ -1,6 +1,6 @@
 # Notra — Decision Ledger
 
-**Last updated:** 2026-10-03
+**Last updated:** 2026-10-04
 
 | ID | Status | Decision | Consequence |
 |---|---|---|---|
@@ -33,3 +33,7 @@
 | D-027 | LOCKED | Interactive UI must respect Android safe-drawing, navigation-bar, cutout, and IME insets on every supported navigation mode. | No toolbar, button, card control, or navigation element may sit beneath Samsung 3-button navigation, gesture navigation, the status bar, a cutout, or the software keyboard. Physical-device inset defects are release blockers for the affected packet. |
 | D-028 | LOCKED | The product shell is content-first and compact; avoid generic Material hero-page scaffolding. | Board becomes a full-bleed workspace with compact/floating chrome; Library/Search/Settings use restrained page chrome rather than oversized titles, explanatory panels, and large dead zones. |
 | D-029 | LOCKED | The user-provided **Kinetic Canvas Visual Workspace** is inspiration for spatial density, layered dark surfaces, compact HUDs, canvas/grid contrast, and focused editing—not a feature-scope source. | Do not import Graph view, S-Pen drawing, audio notes, due dates/reminders, sound effects, emoji-heavy controls, permanent node chrome, or other prototype extras unless separately approved in the blueprint. |
+| D-030 | LOCKED | Deleting a Folder dissolves only that Folder; it never deletes notes or its child folders. | Direct notes and child folders move to the deleted Folder's parent, or to Unfiled/root when deleting a root Folder. |
+| D-031 | LOCKED | Archive and Trash are distinct lifecycle states, and Trash restore preserves prior organization/lifecycle metadata. | Trashing preserves folder, tags, pin/favorite and archivedAt; restoring clears deletedAt only, so an archived note returns to Archive. |
+| D-032 | LOCKED | Tags are many-to-many and independent of Folder, Board, Stack, Archive and pin/favorite state. | Deleting/renaming a Tag never deletes or relocates notes. |
+| D-033 | LOCKED | I-003 introduces an explicit non-destructive Room v1→v2 migration; destructive fallback is forbidden. | Existing notes migrate as Unfiled, active, unpinned and non-favorite while preserving IDs/content/timestamps/deletedAt/revision; v1 schema remains committed and v2 is exported/tested. |
