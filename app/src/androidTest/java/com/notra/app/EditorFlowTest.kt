@@ -57,6 +57,7 @@ class EditorFlowTest {
         compose.onNodeWithTag("block_0").performTextInput("Bold")
         compose.onNodeWithTag("block_0").performTextInputSelection(TextRange(0, 4))
         compose.onNodeWithTag("mark_BOLD").performClick()
+        compose.onNodeWithTag("insert_menu").performClick()
         compose.onNodeWithTag("insert_checklist").performClick()
         compose.onNodeWithTag("block_1").performTextInput("Done")
         compose.onNodeWithTag("check_1").performClick()
