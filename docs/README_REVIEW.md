@@ -1,1 +1,0 @@
-This branch contains the independently reviewed I-002 Notes Editor & Autosave implementation and I-002R reliability repairs. See `docs/IMPLEMENTATION_STATUS.md` for the authoritative status and verification record.
